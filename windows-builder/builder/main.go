@@ -22,14 +22,18 @@ var (
 	subnetwork       = flag.String("subnetwork", "default", "The Subnetwork name to use when creating the Windows server")
 	region           = flag.String("region", "us-central1", "The region name to use when creating the Windows server")
 	zone             = flag.String("zone", "us-central1-f", "The zone name to use when creating the Windows server")
+	labels           = flag.String("labels", "", "List of label KEY=VALUE pairs separated by comma to add when creating the Windows server.	")
+	machineType      = flag.String("machineType", "", "The machine type to use when creating the Windows server")
 )
 
 func main() {
 	log.Print("Starting Windows builder")
 	flag.Parse()
+
 	var r *builder.Remote
 	var s *builder.Server
 	var bs *builder.BuilderServer
+	var exitCode = 0
 
 	// Connect to server
 	if (*hostname != "") && (*username != "") && (*password != "") {
@@ -42,11 +46,13 @@ func main() {
 	} else {
 		ctx := context.Background()
 		bs = &builder.BuilderServer{
-			ImageUrl: image,
-			VPC:      network,
-			Subnet:   subnetwork,
-			Region:   region,
-			Zone:     zone,
+			ImageUrl:    image,
+			VPC:         network,
+			Subnet:      subnetwork,
+			Region:      region,
+			Zone:        zone,
+			Labels:      labels,
+			MachineType: machineType,
 		}
 		s = builder.NewServer(ctx, bs)
 		r = &s.Remote
@@ -55,6 +61,7 @@ func main() {
 	err := r.Wait()
 	if err != nil {
 		log.Fatalf("Error connecting to server: %+v", err)
+		exitCode = 1
 	}
 
 	r.BucketName = workspaceBucket
@@ -64,6 +71,7 @@ func main() {
 		err = r.Copy(*workspacePath)
 		if err != nil {
 			log.Fatalf("Error copying workspace: %+v", err)
+			exitCode = 1
 		}
 	}
 
@@ -72,6 +80,7 @@ func main() {
 	err = r.Run(*command)
 	if err != nil {
 		log.Fatalf("Error executing command: %+v", err)
+		exitCode = 1
 	}
 
 	// Shut down server if started
@@ -81,4 +90,6 @@ func main() {
 			log.Fatalf("Failed to shut down instance: %+v", err)
 		}
 	}
+
+	os.Exit(exitCode)
 }

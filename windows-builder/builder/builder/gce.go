@@ -137,9 +137,15 @@ func (s *Server) newGCEService(ctx context.Context) error {
 func (s *Server) newInstance(bs *BuilderServer) error {
 	scmd := startupCmd // TODO: find better way to take address of const
 	name := "windows-builder-" + uuid.New()
+
+	machineType := *bs.MachineType
+	if machineType == "" {
+		machineType = "n1-standard-1"
+	}
+
 	instance := &compute.Instance{
 		Name:        name,
-		MachineType: prefix + s.projectID + "/zones/" + *bs.Zone + "/machineTypes/n1-standard-1",
+		MachineType: prefix + s.projectID + "/zones/" + *bs.Zone + "/machineTypes/" + machineType,
 		Disks: []*compute.AttachedDisk{
 			{
 				AutoDelete: true,
@@ -179,6 +185,7 @@ func (s *Server) newInstance(bs *BuilderServer) error {
 				},
 			},
 		},
+		Labels: bs.parseLabels(),
 	}
 
 	op, err := s.service.Instances.Insert(s.projectID, *bs.Zone, instance).Do()

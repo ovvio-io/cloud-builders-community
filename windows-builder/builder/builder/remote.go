@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
@@ -29,11 +30,38 @@ type Remote struct {
 }
 
 type BuilderServer struct {
-	ImageUrl *string
-	VPC      *string
-	Subnet   *string
-	Region   *string
-	Zone     *string
+	ImageUrl    *string
+	VPC         *string
+	Subnet      *string
+	Region      *string
+	Zone        *string
+	Labels      *string
+	MachineType *string
+}
+
+func (bs *BuilderServer) parseLabels() map[string]string {
+	var labelsMap map[string]string
+
+	for _, label := range strings.Split(*bs.Labels, ",") {
+		labelSpl := strings.Split(label, "=")
+		if len(labelSpl) != 2 {
+			log.Printf("Error: Label needs to be key=value template. %s label ignored", label)
+			continue
+		}
+
+		var key = strings.TrimSpace(labelSpl[0])
+		if len(key) == 0 {
+			log.Printf("Error: Label key can't be empty. %s label ignored", label)
+			continue
+		}
+		var value = strings.TrimSpace(labelSpl[1])
+
+		if labelsMap == nil {
+			labelsMap = make(map[string]string)
+		}
+		labelsMap[key] = value
+	}
+	return labelsMap
 }
 
 // Wait for server to be available.
@@ -155,5 +183,10 @@ func (r *Remote) Run(command string) error {
 
 	cmd.Wait()
 	shell.Close()
+
+	if cmd.ExitCode() != 0 {
+		return fmt.Errorf("command failed with exit-code:%d", cmd.ExitCode())
+	}
+
 	return nil
 }
