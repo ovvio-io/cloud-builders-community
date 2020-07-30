@@ -22,9 +22,25 @@ var (
 	subnetwork       = flag.String("subnetwork", "default", "The Subnetwork name to use when creating the Windows server")
 	region           = flag.String("region", "us-central1", "The region name to use when creating the Windows server")
 	zone             = flag.String("zone", "us-central1-f", "The zone name to use when creating the Windows server")
-	labels           = flag.String("labels", "", "List of label KEY=VALUE pairs separated by comma to add when creating the Windows server.	")
+	labels           = flag.String("labels", "", "List of label KEY=VALUE pairs separated by comma to add when creating the Windows server")
 	machineType      = flag.String("machineType", "", "The machine type to use when creating the Windows server")
+	runTimeout       = flag.Int("runTimeout", 5, "The command run timeout in minutes")
+	envVars          = flag.String("envVars", "", "List of env vars KEY=VALUE pairs separated by comma to set before running command")
+	serviceAccount   = flag.String("serviceAccount", "default", "The service account to use when creating the Windows server")
 )
+
+func deleteInstanceAndExit(s *builder.Server, bs *builder.BuilderServer, exitCode int) {
+	if s != nil {
+		err := s.DeleteInstance(bs)
+		if err != nil {
+			log.Fatalf("Failed to shut down instance: %+v", err)
+		} else {
+			log.Print("Instance shut down successfully")
+		}
+	}
+
+	os.Exit(exitCode)
+}
 
 func main() {
 	log.Print("Starting Windows builder")
@@ -33,7 +49,6 @@ func main() {
 	var r *builder.Remote
 	var s *builder.Server
 	var bs *builder.BuilderServer
-	var exitCode = 0
 
 	// Connect to server
 	if (*hostname != "") && (*username != "") && (*password != "") {
@@ -46,13 +61,14 @@ func main() {
 	} else {
 		ctx := context.Background()
 		bs = &builder.BuilderServer{
-			ImageUrl:    image,
-			VPC:         network,
-			Subnet:      subnetwork,
-			Region:      region,
-			Zone:        zone,
-			Labels:      labels,
-			MachineType: machineType,
+			ImageUrl:       image,
+			VPC:            network,
+			Subnet:         subnetwork,
+			Region:         region,
+			Zone:           zone,
+			Labels:         labels,
+			MachineType:    machineType,
+			ServiceAccount: serviceAccount,
 		}
 		s = builder.NewServer(ctx, bs)
 		r = &s.Remote
@@ -60,8 +76,8 @@ func main() {
 	log.Print("Waiting for server to become available")
 	err := r.Wait()
 	if err != nil {
-		log.Fatalf("Error connecting to server: %+v", err)
-		exitCode = 1
+		log.Printf("Error connecting to server: %+v", err)
+		deleteInstanceAndExit(s, bs, 1)
 	}
 
 	r.BucketName = workspaceBucket
@@ -70,26 +86,28 @@ func main() {
 		log.Print("Copying workspace")
 		err = r.Copy(*workspacePath)
 		if err != nil {
-			log.Fatalf("Error copying workspace: %+v", err)
-			exitCode = 1
+			log.Printf("Error copying workspace: %+v", err)
+			deleteInstanceAndExit(s, bs, 1)
+		}
+	}
+
+	//Env Vars
+	if *envVars != "" {
+		envVarsMap := builder.ParsePropToMap(envVars)
+		err = r.SetEnvVars(envVarsMap)
+		if err != nil {
+			log.Printf("Error set env vars: %+v", err)
+			deleteInstanceAndExit(s, bs, 1)
 		}
 	}
 
 	// Execute on remote
 	log.Printf("Executing command %s", *command)
-	err = r.Run(*command)
+	err = r.Run(*command, *runTimeout)
 	if err != nil {
-		log.Fatalf("Error executing command: %+v", err)
-		exitCode = 1
+		log.Printf("Error executing command: %+v", err)
+		deleteInstanceAndExit(s, bs, 1)
 	}
 
-	// Shut down server if started
-	if s != nil {
-		err = s.DeleteInstance(bs)
-		if err != nil {
-			log.Fatalf("Failed to shut down instance: %+v", err)
-		}
-	}
-
-	os.Exit(exitCode)
+	deleteInstanceAndExit(s, bs, 0)
 }

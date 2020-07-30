@@ -179,13 +179,13 @@ func (s *Server) newInstance(bs *BuilderServer) error {
 		},
 		ServiceAccounts: []*compute.ServiceAccount{
 			{
-				Email: "default",
+				Email: *bs.ServiceAccount,
 				Scopes: []string{
 					compute.CloudPlatformScope,
 				},
 			},
 		},
-		Labels: bs.parseLabels(),
+		Labels: ParsePropToMap(bs.Labels),
 	}
 
 	op, err := s.service.Instances.Insert(s.projectID, *bs.Zone, instance).Do()
@@ -395,7 +395,14 @@ func (s *Server) waitForComputeOperation(op *compute.Operation, bs *BuilderServe
 			return err
 		}
 		if newop.Status == "DONE" {
-			return nil
+			if newop.Error == nil || len(newop.Error.Errors) == 0 {
+				return nil
+			}
+			//Operation Error
+			for _, opError := range newop.Error.Errors {
+				fmt.Printf("Operation Error. Code: %s, Location: %s, Message: %s :", opError.Code, opError.Location, opError.Message)
+			}
+			return fmt.Errorf("Compute operation %s completed with errors", op.Name)
 		}
 		time.Sleep(1 * time.Second)
 	}

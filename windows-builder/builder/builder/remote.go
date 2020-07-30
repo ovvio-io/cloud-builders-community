@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	copyTimeout = 5 * time.Minute
-	runTimeout  = 5 * time.Minute
+	copyTimeoutMin = 10
 )
 
 // Remote represents a remote Windows server.
@@ -30,19 +29,20 @@ type Remote struct {
 }
 
 type BuilderServer struct {
-	ImageUrl    *string
-	VPC         *string
-	Subnet      *string
-	Region      *string
-	Zone        *string
-	Labels      *string
-	MachineType *string
+	ImageUrl       *string
+	VPC            *string
+	Subnet         *string
+	Region         *string
+	Zone           *string
+	Labels         *string
+	MachineType    *string
+	ServiceAccount *string
 }
 
-func (bs *BuilderServer) parseLabels() map[string]string {
+func ParsePropToMap(prop *string) map[string]string {
 	var labelsMap map[string]string
 
-	for _, label := range strings.Split(*bs.Labels, ",") {
+	for _, label := range strings.Split(*prop, ",") {
 		labelSpl := strings.Split(label, "=")
 		if len(labelSpl) != 2 {
 			log.Printf("Error: Label needs to be key=value template. %s label ignored", label)
@@ -68,7 +68,7 @@ func (bs *BuilderServer) parseLabels() map[string]string {
 func (r *Remote) Wait() error {
 	timeout := time.Now().Add(time.Minute * 5)
 	for time.Now().Before(timeout) {
-		err := r.Run("ver")
+		err := r.RunDef("ver")
 		if err == nil {
 			return nil
 		}
@@ -91,7 +91,7 @@ func (r *Remote) Copy(inputPath string) error {
 		Insecure:              true,
 		TLSServerName:         "",
 		CACertBytes:           nil,
-		OperationTimeout:      copyTimeout,
+		OperationTimeout:      copyTimeoutMin * time.Minute,
 		MaxOperationsPerShell: 15,
 	})
 	if err != nil {
@@ -157,11 +157,28 @@ Expand-Archive -Path c:\workspace.zip -DestinationPath c:\workspace -Force
 `, gsURL)
 
 	// Now tell the Windows VM to download it.
-	return r.Run(winrm.Powershell(pwrScript))
+	return r.Run(winrm.Powershell(pwrScript), copyTimeoutMin)
+}
+
+func (r *Remote) SetEnvVars(envVars map[string]string) error {
+	for k, v := range envVars {
+		err := r.RunDef(fmt.Sprintf("setx %s %s", k, v))
+		if err != nil {
+			return err
+		}
+		log.Printf("Env Var %s Set", k)
+	}
+
+	return nil
 }
 
 // Run a command on the Windows remote.
-func (r *Remote) Run(command string) error {
+func (r *Remote) RunDef(command string) error {
+	return r.Run(command, 5)
+}
+func (r *Remote) Run(command string, runTimeoutMin int) error {
+	runTimeout := time.Duration(runTimeoutMin) * time.Minute
+
 	cmdstring := fmt.Sprintf(`cd c:\workspace & %s`, command)
 	endpoint := winrm.NewEndpoint(*r.Hostname, 5986, true, true, nil, nil, nil, runTimeout)
 	w, err := winrm.NewClient(endpoint, *r.Username, *r.Password)
