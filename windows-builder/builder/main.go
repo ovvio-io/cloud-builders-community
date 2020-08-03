@@ -24,28 +24,14 @@ var (
 	zone             = flag.String("zone", "us-central1-f", "The zone name to use when creating the Windows server")
 	labels           = flag.String("labels", "", "List of label KEY=VALUE pairs separated by comma to add when creating the Windows server")
 	machineType      = flag.String("machineType", "", "The machine type to use when creating the Windows server")
-	runTimeout       = flag.Int("runTimeout", 5, "The command run timeout in minutes")
-	envVars          = flag.String("envVars", "", "List of env vars KEY=VALUE pairs separated by comma to set before running command")
+	commandTimeout   = flag.Int("commandTimeout", 5, "The command run timeout in minutes")
+	copyTimeout      = flag.Int("copyTimeout", 5, "The workspace copy timeout in minutes")
 	serviceAccount   = flag.String("serviceAccount", "default", "The service account to use when creating the Windows server")
 )
-
-func deleteInstanceAndExit(s *builder.Server, bs *builder.BuilderServer, exitCode int) {
-	if s != nil {
-		err := s.DeleteInstance(bs)
-		if err != nil {
-			log.Fatalf("Failed to shut down instance: %+v", err)
-		} else {
-			log.Print("Instance shut down successfully")
-		}
-	}
-
-	os.Exit(exitCode)
-}
 
 func main() {
 	log.Print("Starting Windows builder")
 	flag.Parse()
-
 	var r *builder.Remote
 	var s *builder.Server
 	var bs *builder.BuilderServer
@@ -84,30 +70,34 @@ func main() {
 	// Copy workspace to remote machine
 	if !*notCopyWorkspace {
 		log.Print("Copying workspace")
-		err = r.Copy(*workspacePath)
+		err = r.Copy(*workspacePath, *copyTimeout)
 		if err != nil {
 			log.Printf("Error copying workspace: %+v", err)
 			deleteInstanceAndExit(s, bs, 1)
 		}
 	}
 
-	//Env Vars
-	if *envVars != "" {
-		envVarsMap := builder.ParsePropToMap(envVars)
-		err = r.SetEnvVars(envVarsMap)
-		if err != nil {
-			log.Printf("Error set env vars: %+v", err)
-			deleteInstanceAndExit(s, bs, 1)
-		}
-	}
-
 	// Execute on remote
 	log.Printf("Executing command %s", *command)
-	err = r.Run(*command, *runTimeout)
+	err = r.Run(*command, *commandTimeout)
 	if err != nil {
 		log.Printf("Error executing command: %+v", err)
 		deleteInstanceAndExit(s, bs, 1)
 	}
 
+	// Shut down server if started
 	deleteInstanceAndExit(s, bs, 0)
+}
+
+func deleteInstanceAndExit(s *builder.Server, bs *builder.BuilderServer, exitCode int) {
+	if s != nil {
+		err := s.DeleteInstance(bs)
+		if err != nil {
+			log.Fatalf("Failed to shut down instance: %+v", err)
+		} else {
+			log.Print("Instance shut down successfully")
+		}
+	}
+
+	os.Exit(exitCode)
 }

@@ -179,13 +179,13 @@ func (s *Server) newInstance(bs *BuilderServer) error {
 		},
 		ServiceAccounts: []*compute.ServiceAccount{
 			{
-				Email: *bs.ServiceAccount,
+				Email: bs.GetServiceAccountEmail(s.projectID),
 				Scopes: []string{
 					compute.CloudPlatformScope,
 				},
 			},
 		},
-		Labels: ParsePropToMap(bs.Labels),
+		Labels: bs.GetLabelsMap(),
 	}
 
 	op, err := s.service.Instances.Insert(s.projectID, *bs.Zone, instance).Do()
