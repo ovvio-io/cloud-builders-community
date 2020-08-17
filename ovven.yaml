@@ -1,8 +1,9 @@
 
 
 steps:
-  - type: terraform
-  
   - type: cloud-builds
     config: windows-builder/builder/cloudbuild.yaml
     source: windows-builder/builder/
+
+  - type: terraform
+  
