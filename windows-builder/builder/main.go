@@ -27,6 +27,7 @@ var (
 	commandTimeout   = flag.Int("commandTimeout", 5, "The command run timeout in minutes")
 	copyTimeout      = flag.Int("copyTimeout", 5, "The workspace copy timeout in minutes")
 	serviceAccount   = flag.String("serviceAccount", "default", "The service account to use when creating the Windows server")
+	keepOpen         = flag.Bool("keep-open", false, "Keeps the server open")
 )
 
 func main() {
@@ -90,12 +91,16 @@ func main() {
 }
 
 func deleteInstanceAndExit(s *builder.Server, bs *builder.BuilderServer, exitCode int) {
-	if s != nil {
-		err := s.DeleteInstance(bs)
-		if err != nil {
-			log.Fatalf("Failed to shut down instance: %+v", err)
-		} else {
-			log.Print("Instance shut down successfully")
+	if *keepOpen {
+		log.Printf("Server will be kept open")
+	} else {
+		if s != nil {
+			err := s.DeleteInstance(bs)
+			if err != nil {
+				log.Fatalf("Failed to shut down instance: %+v", err)
+			} else {
+				log.Print("Instance shut down successfully")
+			}
 		}
 	}
 
